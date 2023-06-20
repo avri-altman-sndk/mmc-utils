@@ -1,8 +1,9 @@
-CC ?= gcc
+#CC ?= gcc
+CC=aarch64-linux-gnu-gcc
 GIT_VERSION := "$(shell git describe --abbrev=6 --always --tags)"
 AM_CFLAGS = -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 \
 	    -DVERSION=\"$(GIT_VERSION)\"
-CFLAGS ?= -g -O2
+CFLAGS ?= -g -O2 -static
 objects = \
 	mmc.o \
 	mmc_cmds.o \
