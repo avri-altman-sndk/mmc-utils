@@ -50,3 +50,4 @@ int do_general_cmd_read(int nargs, char **argv);
 int do_softreset(int nargs, char **argv);
 int do_preidle(int nargs, char **argv);
 int do_alt_boot_op(int nargs, char **argv);
+int do_lock_unlock(int nargs, char **argv);

@@ -30,6 +30,7 @@
 #define MMC_SEND_STATUS		13	/* ac   [31:16] RCA        R1  */
 #define R1_SWITCH_ERROR   (1 << 7)  /* sx, c */
 #define MMC_SWITCH_MODE_WRITE_BYTE	0x03	/* Set target to value */
+#define MMC_SET_BLOCKLEN	16  /* ac [31:0] block len R1 */
 #define MMC_READ_MULTIPLE_BLOCK  18   /* adtc [31:0] data addr   R1  */
 #define MMC_SET_BLOCK_COUNT      23   /* adtc [31:0] data addr   R1  */
 #define MMC_WRITE_BLOCK		24	/* adtc [31:0] data addr	R1  */
@@ -46,6 +47,7 @@
 					      [1] Discard Enable
 					      [0] Identify Write Blocks for
 					      Erase (or TRIM Enable)  R1b */
+#define MMC_LOCK_UNLOCK		42  /* adtc R1b */
 #define MMC_GEN_CMD		56   /* adtc  [31:1] stuff bits.
 					      [0]: RD/WR1 R1 */
 
@@ -69,6 +71,14 @@
 #define R1_READY_FOR_DATA       (1 << 8)        /* sx, a */
 #define R1_EXCEPTION_EVENT      (1 << 6)        /* sr, a */
 #define R1_APP_CMD              (1 << 5)        /* sr, c */
+
+#define MMC_CMD42_UNLOCK	0x0 /* UNLOCK */
+#define MMC_CMD42_SET_PWD	0x1 /* SET_PWD */
+#define MMC_CMD42_CLR_PWD	0x2 /* CLR_PWD */
+#define MMC_CMD42_LOCK		0x4 /* LOCK */
+#define MMC_CMD42_ERASE		0x8 /* ERASE */
+#define MAX_PWD_LENGTH		32 /* max PWDS_LEN: old+new */
+#define MMC_BLOCK_SIZE		512 /* data blk size for cmd42 */
 
 /*
  * EXT_CSD fields

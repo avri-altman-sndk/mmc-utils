@@ -3245,3 +3245,192 @@ dev_fd_close:
 		exit(1);
 	return 0;
 }
+
+static int hex_to_bytes(char *input, char *output, int len)
+{
+	int ilen = strlen(input);
+
+	if (ilen % 2) {
+		printf("Error: hex string has odd number of characters\n");
+		exit(1);
+	}
+
+	if (ilen / 2 > len) {
+		printf("Error: hex string is too long\n");
+		exit(1);
+	}
+
+	for (int i = 0; i < (ilen / 2); i++) {
+		if (sscanf(input + 2 * i, "%2hhx", &output[i]) != 1) {
+			printf("Error: failed to parse hex string\n");
+			exit(1);
+		}
+	}
+
+	return ilen/2;
+}
+
+static int parse_password(char *pass, char *buf)
+{
+	int pwd_len;
+
+	if (!strncmp("0x", pass, 2)) {
+		pwd_len = hex_to_bytes(pass+2, buf, MAX_PWD_LENGTH);
+	} else {
+		pwd_len = strlen(pass);
+		strncpy(buf, pass, MAX_PWD_LENGTH);
+	}
+
+	if (pwd_len > MAX_PWD_LENGTH) {
+		printf("Password too long.\n");
+		exit(1);
+	}
+
+	return pwd_len;
+}
+
+int do_lock_unlock(int nargs, char **argv)
+{
+	int fd, ret = 0;
+	char *device;
+	__u8 data_block[MMC_BLOCK_SIZE] = {};
+	__u8 data_block_onebyte[1] = {0};
+	int block_size = 0;
+	struct mmc_ioc_multi_cmd *mioc;
+	struct mmc_ioc_cmd *idata;
+	int cmd42_para;
+	char pwd[MAX_PWD_LENGTH*2+1];
+	int pwd_len = 0, new_pwd_len;
+	int min_args, max_args;
+	__u32 r1_response;
+
+	min_args = 4;
+	max_args = 4;
+
+	printf("Function: ");
+	if (!strcmp("s", argv[1])) {
+		cmd42_para = MMC_CMD42_SET_PWD;
+		printf("Set password\n");
+		max_args = 5;
+	} else if (!strcmp("c", argv[1])) {
+		cmd42_para = MMC_CMD42_CLR_PWD;
+		printf("Clear password\n");
+	} else if (!strcmp("l", argv[1])) {
+		cmd42_para = MMC_CMD42_LOCK;
+		printf("Lock the card\n");
+	} else if (!strcmp("sl", argv[1])) {
+		cmd42_para = MMC_CMD42_SET_PWD | MMC_CMD42_LOCK;
+		printf("Set password and lock the card\n");
+		max_args = 5;
+	} else if (!strcmp("u", argv[1])) {
+		cmd42_para = MMC_CMD42_UNLOCK;
+		printf("Unlock the card\n");
+	} else if (!strcmp("e", argv[1])) {
+#ifdef DANGEROUS_COMMANDS_ENABLED
+		cmd42_para = MMC_CMD42_ERASE;
+		printf("Force erase (Warning: all card data will be erased together with PWD!)\n");
+		min_args = 3;
+		max_args = 3;
+#else
+		printf("Erase is disabled unless compiled with DANGEROUS_COMMANDS_ENABLED\n");
+		exit(1);
+#endif
+	} else {
+		printf("Invalid parameter:\n" "s\tset password\n"
+			"c\tclear password\n" "l\tlock\n"
+			"sl\tset password and lock\n" "u\tunlock\n"
+			"e\tforce erase\n");
+		exit(1);
+	}
+
+	if ((nargs < min_args) || (nargs > max_args)) {
+		fprintf(stderr, "Usage: mmc cmd42 <s|c|l|u|e> <device> [password] [new_password]\n");
+		exit(1);
+	}
+
+	if (nargs > 3) {
+		pwd_len = parse_password(argv[3], pwd);
+		printf("Using password '%s', length %d\n", argv[3], pwd_len);
+	}
+
+	if (nargs == 5) {
+		new_pwd_len = parse_password(argv[4], pwd+pwd_len);
+		printf("New password '%s', length %d\n", argv[4], new_pwd_len);
+
+		pwd_len += new_pwd_len;
+	}
+
+	device = argv[2];
+
+	fd = open(device, O_RDWR);
+	if (fd < 0) {
+		perror("open");
+		exit(1);
+	}
+
+	if (cmd42_para == MMC_CMD42_ERASE)
+		block_size = 2;
+	else
+		block_size = MMC_BLOCK_SIZE;
+
+	printf("Set data block length = %d byte(s).\n", block_size);
+
+	mioc = (struct mmc_ioc_multi_cmd *)
+		calloc(1, sizeof(struct mmc_ioc_multi_cmd) +
+			2 * sizeof(struct mmc_ioc_cmd));
+	if (!mioc)
+		return -ENOMEM;
+
+	mioc->num_of_cmds = 2;
+
+	idata = &mioc->cmds[0];
+	set_single_cmd(idata, MMC_SET_BLOCKLEN, 0, 0, block_size);
+
+	if (cmd42_para == MMC_CMD42_ERASE) {
+		data_block_onebyte[0] = cmd42_para;
+	} else {
+		data_block[0] = cmd42_para;
+		data_block[1] = pwd_len;
+		memcpy((char *)(data_block+2), pwd, pwd_len);
+	}
+
+	idata = &mioc->cmds[1];
+
+	idata->write_flag = 1;
+	idata->opcode = MMC_LOCK_UNLOCK;
+	idata->arg = 0;
+	idata->flags = MMC_RSP_R1 | MMC_CMD_AC | MMC_CMD_ADTC;
+	idata->blksz = block_size;
+	idata->blocks = 1;
+
+	if (cmd42_para == MMC_CMD42_ERASE)
+		mmc_ioc_cmd_set_data((*idata), data_block_onebyte);
+	else
+		mmc_ioc_cmd_set_data((*idata), data_block);
+
+	ret = ioctl(fd, MMC_IOC_MULTI_CMD, mioc);
+
+	printf("Multi cmd response: %d\n", ret);
+
+	printf("Set block length response: 0x%08x\n",
+		mioc->cmds[0].response[0]);
+
+	r1_response = mioc->cmds[1].response[0];
+	printf("cmd42 response: 0x%08x\n", r1_response);
+
+	if (r1_response & R1_ERROR) {
+		printf("cmd42 error! Error code: 0x%08x\n",
+			r1_response & R1_ERROR);
+		ret = -1;
+	}
+
+	if (r1_response & R1_LOCK_UNLOCK_FAILED) {
+		printf("Card lock/unlock fail! Error code: 0x%08x\n",
+		r1_response & R1_LOCK_UNLOCK_FAILED);
+		ret = -1;
+	}
+
+	close(fd);
+	return ret;
+}
+
