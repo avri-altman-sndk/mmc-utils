@@ -19,6 +19,19 @@ A patch should be sent as a mail (not as an attachement, see documentation
 above) to the linux-mmc@vger.kernel.org mailing list with maintainers as
 Cc recipients.
 
+Rust version
+-------------
+A Rust version of mmc-utils is available in the mmc-utils-rust directory.
+To build the Rust version, navigate to the mmc-utils-rust directory and run:
+cd mmc-utils-rust
+cargo build --release
+The compiled binary will be in target/release/mmc-utils-rust.
+prior to building the Rust version, you will need to build the library version of mmc_cmd:
+make -f Makefile.libmmc_cmd
+This is because the Rust version of mmc-utils uses the current C implementation of mmc-utils to interact with the MMC device.
+As we go forward, we will be replacing the C implementation with a Rust implementation.
+
+
 Maintainers
 -----------
 
