@@ -251,8 +251,8 @@ static struct Command commands[] = {
 	NULL
 	},
 	{ do_lock_unlock, -3,
-	"cmd42", "<parameter> " "<device> " "[password] " "[new_password]\n"
-		"Usage: mmc cmd42 <s|c|l|u|e> <device> [password] [new_password]\n"
+	"lock", "<parameter> " "<device> " "[password] " "[new_password]\n"
+		"Usage: mmc lock <s|c|l|u|e> <device> [password] [new_password]\n"
 		"<password> can be up to 16 character plaintext or hex string starting with 0x\n"
 		"s\tset password\n"
 		"c\tclear password\n"

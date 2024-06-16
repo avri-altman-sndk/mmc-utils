@@ -72,14 +72,6 @@
 #define R1_EXCEPTION_EVENT      (1 << 6)        /* sr, a */
 #define R1_APP_CMD              (1 << 5)        /* sr, c */
 
-#define MMC_CMD42_UNLOCK	0x0 /* UNLOCK */
-#define MMC_CMD42_SET_PWD	0x1 /* SET_PWD */
-#define MMC_CMD42_CLR_PWD	0x2 /* CLR_PWD */
-#define MMC_CMD42_LOCK		0x4 /* LOCK */
-#define MMC_CMD42_ERASE		0x8 /* ERASE */
-#define MAX_PWD_LENGTH		32 /* max PWDS_LEN: old+new */
-#define MMC_BLOCK_SIZE		512 /* data blk size for cmd42 */
-
 /*
  * EXT_CSD fields
  */
