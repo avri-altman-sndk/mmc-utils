@@ -1,0 +1,16 @@
+# .readthedocs.yaml
+version: 2
+
+sphinx:
+  configuration: docs/conf.py
+
+formats: all
+
+python:
+  install:
+    - requirements: docs/requirements.txt
+
+build:
+  os: "ubuntu-22.04"  # Specify the OS (if this option becomes available)
+  tools:
+    python: "3.8"
