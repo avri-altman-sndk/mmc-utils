@@ -1,0 +1,19 @@
+# .readthedocs.yaml
+version: 2
+
+sphinx:
+  configuration: docs/conf.py
+
+formats: all
+
+python:
+  version: 3.7
+  install:
+    - requirements: docs/requirements.txt
+
+build:
+  image: latest
+  os: "ubuntu-20.04"  # Specify the OS (if this option becomes available)
+   commands:
+    - pip install -r requirements.txt
+    - make html
