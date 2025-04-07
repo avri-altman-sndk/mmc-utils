@@ -2110,7 +2110,7 @@ struct rpmb_frame {
 	u_int16_t block_count;
 	u_int16_t result;
 	u_int16_t req_resp;
-};
+} __attribute__((packed));
 
 static inline void set_single_cmd(struct mmc_ioc_cmd *ioc, __u32 opcode,
 				  int write_flag, unsigned int blocks,
