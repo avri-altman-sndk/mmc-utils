@@ -2100,6 +2100,7 @@ enum rpmb_op_type {
 	MMC_RPMB_WRITE     = 0x03,
 	MMC_RPMB_READ      = 0x04,
 	MMC_RPMB_CONF_WRITE = 0x06,
+	MMC_RPMB_CONF_READ = 0x07,
 
 	/* For internal usage only, do not use it directly */
 	MMC_RPMB_READ_RESP = 0x05
@@ -2237,6 +2238,7 @@ static int do_rpmb_op(int fd, const struct rpmb_frame *frame_in,
 
 		break;
 	case MMC_RPMB_READ_CNT:
+	case MMC_RPMB_CONF_READ:
 		if (out_cnt != 1) {
 			err = -EINVAL;
 			goto out;
@@ -2588,6 +2590,81 @@ out:
 	return ret;
 }
 
+static int rpmb_auth_read(int nargs, char **argv, char *usage)
+{
+	int ret, dev_fd;
+	struct rpmb_frame frame_in = {
+		.req_resp    = htobe16(MMC_RPMB_CONF_READ),
+	}, frame_out = {};
+	unsigned char key[32] = {};
+
+	if (nargs != 3 && nargs != 4) {
+		fprintf(stderr, "%s", usage);
+		return EXIT_FAILURE;
+	}
+
+	if (!secure_wp_supported(argv[1])) {
+		fprintf(stderr, "secure wp not supported %s", argv[1]);
+		return EXIT_FAILURE;
+	}
+
+	dev_fd = open(argv[2], O_RDWR);
+	if (dev_fd < 0) {
+		perror("device open");
+		return EXIT_FAILURE;
+	}
+
+	if (nargs == 4) {
+		ret = rpmb_get_key(argv[3], &frame_in, key, false);
+		if (ret) {
+			printf("failed to read and apply key %d\n", ret);
+			goto out;
+		}
+	}
+
+	/* Execute RPMB op */
+	ret = do_rpmb_op(dev_fd, &frame_in, &frame_out, 1);
+	if (ret != 0) {
+		perror("RPMB ioctl failed");
+		goto out;
+	}
+
+	/* Check RPMB response */
+	if (frame_out.result != 0) {
+		printf("RPMB operation failed, retcode 0x%04x\n", be16toh(frame_out.result));
+		goto out;
+	}
+
+	close(dev_fd);
+
+	/* verify data against key */
+	if (nargs == 4) {
+		unsigned char mac[32] = {};
+		hmac_sha256_ctx ctx;
+
+		hmac_sha256_init(&ctx, key, sizeof(key));
+		hmac_sha256_update(&ctx, frame_out.data,
+				   sizeof(frame_out) - offsetof(struct rpmb_frame, data));
+
+		hmac_sha256_final(&ctx, mac, sizeof(mac));
+
+		/* Compare calculated MAC and MAC from last frame */
+		if (memcmp(mac, frame_out.key_mac, sizeof(mac))) {
+			printf("RPMB MAC mismatch\n");
+			return EXIT_FAILURE;
+		}
+	}
+
+	printf("SECURE_WP_MODE_ENABLE: 0x%02x]\n", frame_out.data[255]);
+	printf("SECURE_WP_MODE_CONFIG: 0x%02x]\n", frame_out.data[254]);
+
+	return 0;
+
+out:
+	close(dev_fd);
+	return ret;
+}
+
 int do_rpmb_sec_wp_enable(int nargs, char **argv)
 {
 	char *usage = "Usage: mmc rpmb secure-wp-mode-on </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
@@ -2614,6 +2691,13 @@ int do_rpmb_sec_wp_mode_clear(int nargs, char **argv)
 	char *usage = "Usage: mmc rpmb secure-wp-enable </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
 
 	return rpmb_auth_write(nargs, argv, 2, 0, usage);
+}
+
+int do_rpmb_sec_wp_en_read(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-enable-read <path/to/mmcblk0> </path/to/mmcblkXrpmb> [/path/to/key]\n";
+
+	return rpmb_auth_read(nargs, argv, usage);
 }
 
 int do_rpmb_write_block(int nargs, char **argv)

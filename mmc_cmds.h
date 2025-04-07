@@ -43,6 +43,7 @@ int do_rpmb_sec_wp_enable(int nargs, char **argv);
 int do_rpmb_sec_wp_disable(int nargs, char **argv);
 int do_rpmb_sec_wp_mode_set(int nargs, char **argv);
 int do_rpmb_sec_wp_mode_clear(int nargs, char **argv);
+int do_rpmb_sec_wp_en_read(int nargs, char **argv);
 int do_cache_en(int nargs, char **argv);
 int do_cache_dis(int nargs, char **argv);
 int do_ffu(int nargs, char **argv);

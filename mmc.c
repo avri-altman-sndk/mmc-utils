@@ -240,6 +240,17 @@ static struct Command commands[] = {
 		  "    mmc rpmb secure-wp-enable /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
 	  NULL
 	},
+	{ do_rpmb_sec_wp_en_read, -2,
+	  "rpmb secure-wp-en-read", "<device> <rpmb device> [key file]\n"
+		  "Reads the status of the SECURE_WP_EN & SECURE_WP_MASK fields.\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-en-read /dev/mmcblk0 /dev/mmcblk0rpmb -\n"
+		  "or read without verification\n"
+		  "  $ mmc rpmb secure-wp-en-read /dev/mmcblk0 /dev/mmcblk0rpmb",
+	  NULL
+	},
 	{ do_cache_en, -1,
 	  "cache enable", "<device>\n"
 		"Enable the eMMC cache feature on <device>.\n"
