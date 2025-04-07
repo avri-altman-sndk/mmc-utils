@@ -1952,6 +1952,10 @@ int do_read_extcsd(int nargs, char **argv)
 
 	if (ext_csd_rev >= 7) {
 		printf("eMMC Firmware Version: %.8s\n", (char*)&ext_csd[EXT_CSD_FIRMWARE_VERSION]);
+
+		printf("eMMC SECURE_WP_SUPPORT: %u\n", ext_csd[EXT_CSD_SECURE_WP_INFO] & 1);
+		printf("eMMC SECURE_WP_EN_STATUS: %u\n", (ext_csd[EXT_CSD_SECURE_WP_INFO] & 2) >> 1);
+
 		printf("eMMC Life Time Estimation A [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A]: 0x%02x\n",
 			ext_csd[EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A]);
 		printf("eMMC Life Time Estimation B [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B]: 0x%02x\n",
