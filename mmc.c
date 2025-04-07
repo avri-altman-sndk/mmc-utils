@@ -220,6 +220,26 @@ static struct Command commands[] = {
 		  "    mmc rpmb secure-wp-mode-off /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
 	  NULL
 	},
+	{ do_rpmb_sec_wp_mode_set, 3,
+	  "rpmb secure-wp-disable", "<dev> <rpmb device> <key file>\n"
+		  "Enabling updating WP related EXT_CSD and CSD fields.\n"
+		  "Applicable only if secure wp mode is enabled.\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-disable /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
+	  NULL
+	},
+	{ do_rpmb_sec_wp_mode_clear, 3,
+	  "rpmb secure-wp-enable", "<dev> <rpmb device> <key file>\n"
+		  "Disabling updating WP related EXT_CSD and CSD fields.\n"
+		  "Applicable only if secure wp mode is enabled.\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-enable /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
+	  NULL
+	},
 	{ do_cache_en, -1,
 	  "cache enable", "<device>\n"
 		"Enable the eMMC cache feature on <device>.\n"

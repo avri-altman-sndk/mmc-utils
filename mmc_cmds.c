@@ -2602,6 +2602,20 @@ int do_rpmb_sec_wp_disable(int nargs, char **argv)
 	return rpmb_auth_write(nargs, argv, 1, 0, usage);
 }
 
+int do_rpmb_sec_wp_mode_set(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-disable </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
+
+	return rpmb_auth_write(nargs, argv, 2, 1, usage);
+}
+
+int do_rpmb_sec_wp_mode_clear(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-enable </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
+
+	return rpmb_auth_write(nargs, argv, 2, 0, usage);
+}
+
 int do_rpmb_write_block(int nargs, char **argv)
 {
 	int ret, dev_fd, data_fd;
