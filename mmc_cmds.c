@@ -2224,7 +2224,7 @@ int do_rpmb_write_key(int nargs, char **argv)
 	int ret, dev_fd, key_fd;
 	struct rpmb_frame frame_in = {
 		.req_resp = htobe16(MMC_RPMB_WRITE_KEY)
-	}, frame_out;
+	}, frame_out = {};
 
 	if (nargs != 3) {
 		fprintf(stderr, "Usage: mmc rpmb write-key </path/to/mmcblkXrpmb> </path/to/key>\n");
@@ -2285,7 +2285,7 @@ static int rpmb_read_counter(int dev_fd, unsigned int *cnt)
 	int ret;
 	struct rpmb_frame frame_in = {
 		.req_resp = htobe16(MMC_RPMB_READ_CNT)
-	}, frame_out;
+	}, frame_out = {};
 
 	/* Execute RPMB op */
 	ret = do_rpmb_op(dev_fd, &frame_in, &frame_out, 1);
@@ -2499,7 +2499,7 @@ int do_rpmb_write_block(int nargs, char **argv)
 	struct rpmb_frame frame_in = {
 		.req_resp    = htobe16(MMC_RPMB_WRITE),
 		.block_count = htobe16(1)
-	}, frame_out;
+	}, frame_out = {};
 
 	if (nargs != 5) {
 		fprintf(stderr, "Usage: mmc rpmb write-block </path/to/mmcblkXrpmb> <address> </path/to/input_file> </path/to/key>\n");
