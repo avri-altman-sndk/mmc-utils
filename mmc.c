@@ -157,7 +157,7 @@ static struct Command commands[] = {
 		"Send Sanitize command to the <device>.\nThis will delete the unmapped memory region of the device.",
 	  NULL
 	},
-	{ do_rpmb_write_key, -1,
+	{ do_rpmb_write_key, 2,
 	  "rpmb write-key", "<rpmb device> <key file>\n"
 		  "Program authentication key which is 32 bytes length and stored\n"
 		  "in the specified file. Also you can specify '-' instead of\n"
@@ -168,12 +168,12 @@ static struct Command commands[] = {
 		  "    mmc rpmb write-key /dev/mmcblk0rpmb -",
 	  NULL
 	},
-	{ do_rpmb_read_counter, -1,
+	{ do_rpmb_read_counter, 1,
 	  "rpmb read-counter", "<rpmb device>\n"
 		  "Counter value for the <rpmb device> will be read to stdout.",
 	  NULL
 	},
-	{ do_rpmb_read_block, -1,
+	{ do_rpmb_read_block, -4,
 	  "rpmb read-block", "<rpmb device> <address> <blocks count> <output file> [key file]\n"
 		  "Blocks of 256 bytes will be read from <rpmb device> to output\n"
 		  "file or stdout if '-' is specified. If key is specified - read\n"
@@ -186,7 +186,7 @@ static struct Command commands[] = {
 		  "  $ mmc rpmb read-block /dev/mmcblk0rpmb 0x02 2 /tmp/block",
 	  NULL
 	},
-	{ do_rpmb_write_block, -1,
+	{ do_rpmb_write_block, 4,
 	  "rpmb write-block", "<rpmb device> <address> <256 byte data file> <key file>\n"
 		  "Block of 256 bytes will be written from data file to\n"
 		  "<rpmb device>. Also you can specify '-' instead of key\n"
