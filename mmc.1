@@ -166,6 +166,45 @@ Block of 256 bytes will be written from data file to
 .br
 Also you can specify '-' instead of key file path or data file to read the data from stdin.
 .TP
+.BI rpmb " " secure\-wp\-mode\-on " " \fIrpmb\-device\fR " " \fIkey\-file\fR
+Enable Secure Write Protection mode.
+.br
+The access to the write protection related EXT_CSD and
+CSD fields depends on the value of SECURE_WP_MASK bit in
+SECURE_WP_MODE_CONFIG field.
+.br
+You can specify '-' instead of key.
+.TP
+.BI rpmb " " secure\-wp\-mode\-off " " \fIrpmb\-device\fR " " \fIkey\-file\fR
+Disable Secure Write Protection mode = legacy mode.
+.br
+TMP_WRITE_PROTECT[12] and PERM_WRITE_PROTECT[13] are updated by CMD27.
+.br
+USER_WP[171], BOOT_WP[173], and BOOT_WP_STATUS[174] are updated by CMD6.
+.br
+You can specify '-' instead of key.
+.TP
+.BI rpmb " " secure\-wp\-disable " " \fIrpmb\-device\fR " " \fIkey\-file\fR
+Enabling updating WP related EXT_CSD and CSD fields.
+.br
+Applicable only if secure wp mode is enabled.
+.br
+You can specify '-' instead of key.
+.TP
+.BI rpmb " " secure\-wp\-enable " " \fIrpmb\-device\fR " " \fIkey\-file\fR
+Disabling updating WP related EXT_CSD and CSD fields.
+.br
+Applicable only if secure wp mode is enabled.
+.br
+You can specify '-' instead of key.
+.TP
+.BI rpmb " " secure\-wp\-en\-read " " \fIrpmb\-device\fR " " [\fIkey\-file\fR]
+Reads the status of the SECURE_WP_EN & SECURE_WP_MASK fields
+.br
+Applicable only if secure wp mode is enabled.
+.br
+You can specify '-' instead of key.
+.TP
 .BI cache " " enable " " \fIdevice\fR
 Enable the eMMC cache feature on the device.
 .br
