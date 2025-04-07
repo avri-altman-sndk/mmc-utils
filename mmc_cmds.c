@@ -2101,15 +2101,15 @@ enum rpmb_op_type {
 };
 
 struct rpmb_frame {
-	u_int8_t  stuff[196];
-	u_int8_t  key_mac[32];
-	u_int8_t  data[256];
-	u_int8_t  nonce[16];
-	u_int32_t write_counter;
-	u_int16_t addr;
-	u_int16_t block_count;
-	u_int16_t result;
-	u_int16_t req_resp;
+	u_int8_t  stuff[196];           /* Bytes 511 - 316 */
+	u_int8_t  key_mac[32];          /* Bytes 315 - 284 */
+	u_int8_t  data[256];            /* Bytes 283 - 28 */
+	u_int8_t  nonce[16];            /* Bytes 27 - 12 */
+	u_int32_t write_counter;        /* Bytes 11 - 8 */
+	u_int16_t addr;                 /* Bytes 7 - 6 */
+	u_int16_t block_count;          /* Bytes 5 - 4 */
+	u_int16_t result;               /* Bytes 3 - 2 */
+	u_int16_t req_resp;             /* Bytes 1 - 0 */
 } __attribute__((packed));
 
 static inline void set_single_cmd(struct mmc_ioc_cmd *ioc, __u32 opcode,
