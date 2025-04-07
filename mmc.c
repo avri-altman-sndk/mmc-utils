@@ -197,6 +197,29 @@ static struct Command commands[] = {
 		  "    mmc rpmb write-block /dev/mmcblk0rpmb 0x02 - -",
 	  NULL
 	},
+	{ do_rpmb_sec_wp_enable, 3,
+	  "rpmb secure-wp-mode-on", "<dev> <rpmb device> <key file>\n"
+		  "Enable Secure Write Protection mode.\n"
+		  "The access to the write protection related EXT_CSD and\n"
+		  "CSD fields depends on the value of SECURE_WP_MASK bit in\n"
+		  "SECURE_WP_MODE_CONFIG field\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-mode-on /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
+	  NULL
+	},
+	{ do_rpmb_sec_wp_disable, 3,
+	  "rpmb secure-wp-mode-off", "<dev> <rpmb device> <key file>\n"
+		  "Legacy Write Protection mode.\n"
+		  "TMP_WRITE_PROTECT[12] and PERM_WRITE_PROTECT[13] is updated by CMD27.\n"
+		  "USER_WP[171], BOOT_WP[173] and BOOT_WP_STATUS[174] are updated by CMD6\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-mode-off /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
+	  NULL
+	},
 	{ do_cache_en, -1,
 	  "cache enable", "<device>\n"
 		"Enable the eMMC cache feature on <device>.\n"

@@ -2099,6 +2099,7 @@ enum rpmb_op_type {
 	MMC_RPMB_READ_CNT  = 0x02,
 	MMC_RPMB_WRITE     = 0x03,
 	MMC_RPMB_READ      = 0x04,
+	MMC_RPMB_CONF_WRITE = 0x06,
 
 	/* For internal usage only, do not use it directly */
 	MMC_RPMB_READ_RESP = 0x05
@@ -2210,6 +2211,7 @@ static int do_rpmb_op(int fd, const struct rpmb_frame *frame_in,
 	switch(rpmb_type) {
 	case MMC_RPMB_WRITE:
 	case MMC_RPMB_WRITE_KEY:
+	case MMC_RPMB_CONF_WRITE:
 		if (out_cnt != 1) {
 			err = -EINVAL;
 			goto out;
@@ -2496,6 +2498,108 @@ int do_rpmb_read_block(int nargs, char **argv)
 		close(data_fd);
 
 	return ret;
+}
+
+static bool secure_wp_supported(char *device)
+{
+	__u8 ext_csd[512];
+	int fd;
+
+	fd = open(device, O_RDWR);
+	if (fd < 0) {
+		perror("open");
+		return false;
+	}
+
+	if (read_extcsd(fd, ext_csd)) {
+		fprintf(stderr, "Could not read EXT_CSD from %s\n", device);
+		close(fd);
+		return false;
+	}
+
+	close(fd);
+
+	if (ext_csd[EXT_CSD_REV] < EXT_CSD_REV_V5_0) {
+		fprintf(stderr, "SECURE_WP_SUPPORT option is only available on devices >= MMC 5.0 %s\n", device);
+		return false;
+	}
+
+	return !!(ext_csd[EXT_CSD_SECURE_WP_INFO] & 1);
+}
+
+static int rpmb_auth_write(int nargs, char **argv, uint16_t addr,
+			   uint8_t config_data, char *usage)
+{
+	int ret, dev_fd;
+	unsigned int cnt;
+	struct rpmb_frame frame_in = {
+		.req_resp    = htobe16(MMC_RPMB_CONF_WRITE),
+		.block_count = htobe16(1),
+		.addr	     = htobe16(addr),
+	}, frame_out = {};
+
+	if (nargs != 4) {
+		fprintf(stderr, "%s", usage);
+		return EXIT_FAILURE;
+	}
+
+	if (!secure_wp_supported(argv[1])) {
+		fprintf(stderr, "secure wp not supported %s", argv[1]);
+		return EXIT_FAILURE;
+	}
+
+	dev_fd = open(argv[2], O_RDWR);
+	if (dev_fd < 0) {
+		perror("device open");
+		return EXIT_FAILURE;
+	}
+
+	ret = rpmb_read_counter(dev_fd, &cnt);
+	/* Check RPMB response */
+	if (ret != 0) {
+		printf("RPMB read counter operation failed, retcode 0x%04x\n", ret);
+		goto out;
+	}
+	frame_in.write_counter = htobe32(cnt);
+
+	frame_in.data[255] = config_data; /* Byte 28 */
+
+	ret = rpmb_get_key(argv[3], &frame_in, NULL, true);
+	if (ret) {
+		printf("failed to read and apply key %d\n", ret);
+		goto out;
+	}
+
+	/* Execute RPMB op */
+	ret = do_rpmb_op(dev_fd, &frame_in, &frame_out, 1);
+	if (ret != 0) {
+		perror("RPMB ioctl failed");
+		goto out;
+	}
+
+	/* Check RPMB response */
+	if (frame_out.result != 0) {
+		printf("RPMB operation failed, retcode 0x%04x\n",
+		       be16toh(frame_out.result));
+	}
+
+out:
+	close(dev_fd);
+	return ret;
+}
+
+int do_rpmb_sec_wp_enable(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-mode-on </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
+
+	return rpmb_auth_write(nargs, argv, 1, 1, usage);
+}
+
+int do_rpmb_sec_wp_disable(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-mode-off </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
+
+	return rpmb_auth_write(nargs, argv, 1, 0, usage);
 }
 
 int do_rpmb_write_block(int nargs, char **argv)
