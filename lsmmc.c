@@ -62,16 +62,11 @@ enum bus_type {
 };
 
 struct config {
-	char *idsfile;
 	char *dir;
 	bool verbose;
 
 	enum bus_type bus;
-	char *type;
-	char *cid;
-	char *csd;
-	char *scr;
-	char *ext_csd;
+	char *reg;
 };
 
 enum REG_TYPE {
@@ -232,36 +227,65 @@ static struct ids_database mmc_database[] = {
 };
 
 /* Command line parsing functions */
-static void usage(void)
+static void usage(char *progname)
 {
-	printf("Usage: print mmc [-h] [-v] <device path ...>\n");
+	printf("Usage: %s [-h] [-v] [-b bus_type] [-r register] <device path ...>\n", progname);
 	printf("\n");
 	printf("Options:\n");
+	printf("\t-b\t bus type. Either sd or mmc. if specified, register value must be given.\n");
+	printf("\t-r\t The register content. if specified no need for device path\n");
 	printf("\t-h\tShow this help.\n");
 	printf("\t-v\tEnable verbose mode.\n");
+}
+
+static void to_lowercase(char *str)
+{
+	for (; *str; ++str)
+		*str = tolower((unsigned char)*str);
 }
 
 static int parse_opts(int argc, char **argv, struct config *config)
 {
 	int c;
+	bool bus_given = false;
+	bool reg_given = false;
 
-	while ((c = getopt(argc, argv, "hv")) != -1) {
+	while ((c = getopt(argc, argv, "hvb:r:")) != -1) {
 		switch (c) {
 		case 'h':
-			usage();
+			usage(argv[0]);
 			return -1;
 		case 'v':
 			config->verbose = true;
 			break;
+		case 'b':
+			to_lowercase(optarg);
+			if (strcmp(optarg, "mmc") == 0) {
+				config->bus = MMC;
+			} else if (strcmp(optarg, "sd") == 0) {
+				config->bus = SD;
+			} else {
+				fprintf(stderr, "Unknown bus type '%s'.\n\n", optarg);
+				usage(argv[0]);
+				return -1;
+			}
+			bus_given = true;
+
+			break;
+		case 'r':
+			config->reg = strdup(optarg);
+			reg_given = true;
+
+			break;
 		case '?':
 			fprintf(stderr,
 				"Unknown option '%c' encountered.\n\n", c);
-			usage();
+			usage(argv[0]);
 			return -1;
 		case ':':
 			fprintf(stderr,
 				"Argument for option '%c' missing.\n\n", c);
-			usage();
+			usage(argv[0]);
 			return -1;
 		default:
 			fprintf(stderr,
@@ -270,13 +294,28 @@ static int parse_opts(int argc, char **argv, struct config *config)
 		}
 	}
 
-	if (optind >= argc) {
-		fprintf(stderr, "Expected mmc directory arguments.\n\n");
-		usage();
+	if (bus_given != reg_given) {
+		fprintf(stderr, "Both bus type and register must be provided together.\n\n");
+		usage(argv[0]);
 		return -1;
 	}
 
-	config->dir = strdup(argv[optind]);
+	if (reg_given) {
+		if (optind < argc) {
+			fprintf(stderr, "Either register or directory, not both.\n\n");
+			usage(argv[0]);
+			return -1;
+		}
+	} else {
+		if (optind >= argc) {
+			fprintf(stderr, "Expected mmc directory arguments.\n\n");
+			usage(argv[0]);
+			return -1;
+		}
+
+		config->dir = strdup(argv[optind]);
+	}
+
 	return 0;
 }
 
@@ -2083,10 +2122,102 @@ static void print_sd_scr(struct config *config, char *scr)
 	}
 }
 
+static int process_reg(struct config *config, char *reg_content, enum REG_TYPE reg)
+{
+	int ret = 0;
+
+	switch (reg) {
+	case CID:
+		if (!reg_content) {
+			fprintf(stderr,
+				"Could not read card identity in directory '%s'.\n",
+				config->dir);
+			ret = -1;
+			goto err;
+		}
+
+		if (config->bus == SD)
+			print_sd_cid(config, reg_content);
+		else
+			print_mmc_cid(config, reg_content);
+
+		break;
+	case CSD:
+		if (!reg_content) {
+			fprintf(stderr,
+				"Could not read card specific data in "
+				"directory '%s'.\n", config->dir);
+			ret = -1;
+			goto err;
+		}
+
+		if (config->bus == SD)
+			print_sd_csd(config, reg_content);
+		else
+			print_mmc_csd(config, reg_content);
+
+		break;
+	case SCR:
+		if (config->bus != SD)
+			break;
+
+		if (!reg_content) {
+			fprintf(stderr, "Could not read SD card "
+				"configuration in directory '%s'.\n",
+				config->dir);
+			ret = -1;
+			goto err;
+		}
+
+		print_sd_scr(config, reg_content);
+
+		break;
+	default:
+		goto err;
+	}
+
+err:
+
+	return ret;
+}
+
+static int process_reg_from_file(struct config *config, enum REG_TYPE reg)
+{
+	char *reg_content = NULL;
+	int ret = 0;
+
+	switch (reg) {
+	case CID:
+		reg_content = read_file("cid");
+		ret = process_reg(config, reg_content, CID);
+
+		break;
+	case CSD:
+		reg_content = read_file("csd");
+		ret = process_reg(config, reg_content, CSD);
+
+		break;
+	case SCR:
+		if (config->bus != SD)
+			break;
+
+		reg_content = read_file("scr");
+		ret = process_reg(config, reg_content, SCR);
+
+		break;
+	default:
+		goto err;
+	}
+
+err:
+	free(reg_content);
+
+	return ret;
+}
+
 static int process_dir(struct config *config, enum REG_TYPE reg)
 {
 	char *type = NULL;
-	char *reg_content = NULL;
 	int ret = 0;
 
 	if (chdir(config->dir) < 0) {
@@ -2112,60 +2243,9 @@ static int process_dir(struct config *config, enum REG_TYPE reg)
 
 	config->bus = strcmp(type, "MMC") ? SD : MMC;
 
-	switch (reg) {
-	case CID:
-		reg_content = read_file("cid");
-		if (!reg_content) {
-			fprintf(stderr,
-				"Could not read card identity in directory '%s'.\n",
-				config->dir);
-			ret = -1;
-			goto err;
-		}
-
-		if (config->bus == SD)
-			print_sd_cid(config, reg_content);
-		else
-			print_mmc_cid(config, reg_content);
-
-		break;
-	case CSD:
-		reg_content = read_file("csd");
-		if (!reg_content) {
-			fprintf(stderr,
-				"Could not read card specific data in "
-				"directory '%s'.\n", config->dir);
-			ret = -1;
-			goto err;
-		}
-
-		if (config->bus == SD)
-			print_sd_csd(config, reg_content);
-		else
-			print_mmc_csd(config, reg_content);
-
-		break;
-	case SCR:
-		if (!strcmp(type, "SD")) {
-			reg_content = read_file("scr");
-			if (!reg_content) {
-				fprintf(stderr, "Could not read SD card "
-					"configuration in directory '%s'.\n",
-					config->dir);
-				ret = -1;
-				goto err;
-			}
-		}
-
-		print_sd_scr(config, reg_content);
-
-		break;
-	default:
-		goto err;
-	}
+	ret = process_reg_from_file(config, reg);
 
 err:
-	free(reg_content);
 	free(type);
 
 	return ret;
@@ -2180,41 +2260,27 @@ static int do_read_reg(int argc, char **argv, enum REG_TYPE reg)
 	if (ret)
 		return ret;
 
-	if (cfg.dir)
+	if (cfg.dir) {
 		ret = process_dir(&cfg, reg);
-
-	free(cfg.dir);
+		free(cfg.dir);
+	} else if (cfg.reg) {
+		ret = process_reg(&cfg, cfg.reg, reg);
+	}
 
 	return ret;
-
 }
 
 int do_read_csd(int argc, char **argv)
 {
-	if (argc != 2 && argc != 3) {
-		fprintf(stderr, "Usage: Print CSD data from <device path>.\n");
-		exit(1);
-	}
-
 	return do_read_reg(argc, argv, CSD);
 }
 
 int do_read_cid(int argc, char **argv)
 {
-	if (argc != 2 && argc != 3) {
-		fprintf(stderr, "Usage: Print CID data from <device path>.\n");
-		exit(1);
-	}
-
 	return do_read_reg(argc, argv, CID);
 }
 
 int do_read_scr(int argc, char **argv)
 {
-	if (argc != 2 && argc != 3) {
-		fprintf(stderr, "Usage: Print SCR data from <device path>.\n");
-		exit(1);
-	}
-
 	return do_read_reg(argc, argv, SCR);
 }

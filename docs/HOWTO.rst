@@ -28,11 +28,26 @@ Running mmc-utils
         If <number> is passed (0 or 1), only protect that particular eMMC boot partition, otherwise protect both. It will be write-protected until the next boot.
         -p  Protect partition permanently instead. NOTE! -p is a one-time programmable (unreversible) change.
 
+    ``writeprotect user get <device>``
+        Print the user areas write protect configuration for <device>.
+
     ``writeprotect user set <type> <start block> <blocks> <device>``
         Set user area write protection.
 
+    ``csd read  [-h] [-v] [-b bus_type] [-r register]  <device path>``
+        Print CSD data from <device path>. The device path should specify the csd sysfs file directory.
+        if [bus_type] is passed (mmc or sd) the [register] content must be passed as well, and no need for device path.
+        it is useful for cases we are getting the register value without having the actual platform.
+
+    ``cid read <device path>``
+        Print CID data from <device path>. The device path should specify the cid sysfs file directory.
+        if [bus_type] is passed (mmc or sd) the [register] content must be passed as well, and no need for device path.
+        it is useful for cases we are getting the register value without having the actual platform.
+
     ``scr read <device path>``
-        Print SCR data from <device path>. The device path should specify the scr file directory.
+        Print SCR data from <device path>. The device path should specify the scr sysfs file directory.
+        if [bus_type] is passed (mmc or sd) the [register] content must be passed as well, and no need for device path.
+        it is useful for cases we are getting the register value without having the actual platform.
 
     ``ffu <image name> <device> [chunk-bytes]``
       Default mode.  Run Field Firmware Update with `<image name>` on `<device>`. `[chunk-bytes]` is optional and defaults to its max - 512k. Should be in decimal bytes and sector aligned.
