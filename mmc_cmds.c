@@ -1952,6 +1952,10 @@ int do_read_extcsd(int nargs, char **argv)
 
 	if (ext_csd_rev >= 7) {
 		printf("eMMC Firmware Version: %.8s\n", (char*)&ext_csd[EXT_CSD_FIRMWARE_VERSION]);
+
+		printf("eMMC SECURE_WP_SUPPORT: %u\n", ext_csd[EXT_CSD_SECURE_WP_INFO] & 1);
+		printf("eMMC SECURE_WP_EN_STATUS: %u\n", (ext_csd[EXT_CSD_SECURE_WP_INFO] & 2) >> 1);
+
 		printf("eMMC Life Time Estimation A [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A]: 0x%02x\n",
 			ext_csd[EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A]);
 		printf("eMMC Life Time Estimation B [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B]: 0x%02x\n",
@@ -2095,22 +2099,24 @@ enum rpmb_op_type {
 	MMC_RPMB_READ_CNT  = 0x02,
 	MMC_RPMB_WRITE     = 0x03,
 	MMC_RPMB_READ      = 0x04,
+	MMC_RPMB_CONF_WRITE = 0x06,
+	MMC_RPMB_CONF_READ = 0x07,
 
 	/* For internal usage only, do not use it directly */
 	MMC_RPMB_READ_RESP = 0x05
 };
 
 struct rpmb_frame {
-	u_int8_t  stuff[196];
-	u_int8_t  key_mac[32];
-	u_int8_t  data[256];
-	u_int8_t  nonce[16];
-	u_int32_t write_counter;
-	u_int16_t addr;
-	u_int16_t block_count;
-	u_int16_t result;
-	u_int16_t req_resp;
-};
+	u_int8_t  stuff[196];           /* Bytes 511 - 316 */
+	u_int8_t  key_mac[32];          /* Bytes 315 - 284 */
+	u_int8_t  data[256];            /* Bytes 283 - 28 */
+	u_int8_t  nonce[16];            /* Bytes 27 - 12 */
+	u_int32_t write_counter;        /* Bytes 11 - 8 */
+	u_int16_t addr;                 /* Bytes 7 - 6 */
+	u_int16_t block_count;          /* Bytes 5 - 4 */
+	u_int16_t result;               /* Bytes 3 - 2 */
+	u_int16_t req_resp;             /* Bytes 1 - 0 */
+} __attribute__((packed));
 
 static inline void set_single_cmd(struct mmc_ioc_cmd *ioc, __u32 opcode,
 				  int write_flag, unsigned int blocks,
@@ -2124,6 +2130,52 @@ static inline void set_single_cmd(struct mmc_ioc_cmd *ioc, __u32 opcode,
 	ioc->flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_ADTC;
 }
 
+static int rpmb_get_key(const char key_file_name[], struct rpmb_frame *frame_in,
+			unsigned char key_out[32], bool encrypt)
+{
+	int ret, key_fd;
+	unsigned char key[32] = {};
+
+	if (strcmp(key_file_name, "-") == 0) {
+		key_fd = STDIN_FILENO;
+	} else {
+		key_fd = open(key_file_name, O_RDONLY);
+		if (key_fd < 0) {
+			perror("can't open key file");
+			return EXIT_FAILURE;
+		}
+	}
+
+	ret = DO_IO(read, key_fd, key, sizeof(key));
+	if (ret < 0) {
+		perror("read the key");
+		goto out;
+	} else if (ret != sizeof(key)) {
+		printf("Auth key must be %lu bytes length, but we read only %d, exit\n",
+		       (unsigned long)sizeof(key), ret);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (key_out)
+		memcpy(key_out, key, 32);
+
+	if (encrypt) {
+		/* Calculate HMAC SHA256 */
+		hmac_sha256(key, sizeof(key), frame_in->data,
+			    sizeof(struct rpmb_frame) - offsetof(struct rpmb_frame, data),
+			    frame_in->key_mac, sizeof(frame_in->key_mac));
+	}
+
+	ret = 0;
+
+out:
+	if (key_fd != STDIN_FILENO)
+		close(key_fd);
+
+	return ret;
+}
+
 /* Performs RPMB operation.
  *
  * @fd: RPMB device on which we should perform ioctl command
@@ -2133,10 +2185,8 @@ static inline void set_single_cmd(struct mmc_ioc_cmd *ioc, __u32 opcode,
  * @out_cnt: count of outer frames. Used only for multiple blocks reading,
  *           in the other cases -EINVAL will be returned.
  */
-static int do_rpmb_op(int fd,
-					  const struct rpmb_frame *frame_in,
-					  struct rpmb_frame *frame_out,
-					  unsigned int out_cnt)
+static int do_rpmb_op(int fd, const struct rpmb_frame *frame_in,
+		      struct rpmb_frame *frame_out, unsigned int out_cnt)
 {
 	int err;
 	u_int16_t rpmb_type;
@@ -2162,6 +2212,7 @@ static int do_rpmb_op(int fd,
 	switch(rpmb_type) {
 	case MMC_RPMB_WRITE:
 	case MMC_RPMB_WRITE_KEY:
+	case MMC_RPMB_CONF_WRITE:
 		if (out_cnt != 1) {
 			err = -EINVAL;
 			goto out;
@@ -2187,6 +2238,7 @@ static int do_rpmb_op(int fd,
 
 		break;
 	case MMC_RPMB_READ_CNT:
+	case MMC_RPMB_CONF_READ:
 		if (out_cnt != 1) {
 			err = -EINVAL;
 			goto out;
@@ -2221,10 +2273,10 @@ out:
 
 int do_rpmb_write_key(int nargs, char **argv)
 {
-	int ret, dev_fd, key_fd;
+	int ret, dev_fd;
 	struct rpmb_frame frame_in = {
 		.req_resp = htobe16(MMC_RPMB_WRITE_KEY)
-	}, frame_out;
+	}, frame_out = {};
 
 	if (nargs != 3) {
 		fprintf(stderr, "Usage: mmc rpmb write-key </path/to/mmcblkXrpmb> </path/to/key>\n");
@@ -2237,28 +2289,9 @@ int do_rpmb_write_key(int nargs, char **argv)
 		exit(1);
 	}
 
-	if (0 == strcmp(argv[2], "-"))
-		key_fd = STDIN_FILENO;
-	else {
-		key_fd = open(argv[2], O_RDONLY);
-		if (key_fd < 0) {
-			perror("can't open key file");
-			exit(1);
-		}
-	}
-
-	/* Read the auth key */
-	ret = DO_IO(read, key_fd, frame_in.key_mac, sizeof(frame_in.key_mac));
-	if (ret < 0) {
-		perror("read the key");
-		exit(1);
-	} else if (ret != sizeof(frame_in.key_mac)) {
-		printf("Auth key must be %lu bytes length, but we read only %d, exit\n",
-			   (unsigned long)sizeof(frame_in.key_mac),
-			   ret);
-		exit(1);
-	}
-
+	ret = rpmb_get_key(argv[2], &frame_in, NULL, false);
+	if (ret)
+		return ret;
 	/* Execute RPMB op */
 	ret = do_rpmb_op(dev_fd, &frame_in, &frame_out, 1);
 	if (ret != 0) {
@@ -2274,8 +2307,6 @@ int do_rpmb_write_key(int nargs, char **argv)
 	}
 
 	close(dev_fd);
-	if (key_fd != STDIN_FILENO)
-		close(key_fd);
 
 	return ret;
 }
@@ -2285,7 +2316,7 @@ static int rpmb_read_counter(int dev_fd, unsigned int *cnt)
 	int ret;
 	struct rpmb_frame frame_in = {
 		.req_resp = htobe16(MMC_RPMB_READ_CNT)
-	}, frame_out;
+	}, frame_out = {};
 
 	/* Execute RPMB op */
 	ret = do_rpmb_op(dev_fd, &frame_in, &frame_out, 1);
@@ -2338,7 +2369,7 @@ int do_rpmb_read_counter(int nargs, char **argv)
 
 int do_rpmb_read_block(int nargs, char **argv)
 {
-	int i, ret, dev_fd, data_fd, key_fd = -1;
+	int i, ret, dev_fd, data_fd;
 	uint16_t addr;
 	/*
 	 * for reading RPMB, number of blocks is set by CMD23 only, the packet
@@ -2403,26 +2434,9 @@ int do_rpmb_read_block(int nargs, char **argv)
 
 	/* Key is specified */
 	if (nargs == 6) {
-		if (0 == strcmp(argv[5], "-"))
-			key_fd = STDIN_FILENO;
-		else {
-			key_fd = open(argv[5], O_RDONLY);
-			if (key_fd < 0) {
-				perror("can't open input key file");
-				exit(1);
-			}
-		}
-
-		ret = DO_IO(read, key_fd, key, sizeof(key));
-		if (ret < 0) {
-			perror("read the key data");
-			exit(1);
-		} else if (ret != sizeof(key)) {
-			printf("Data must be %lu bytes length, but we read only %d, exit\n",
-				   (unsigned long)sizeof(key),
-				   ret);
-			exit(1);
-		}
+		ret = rpmb_get_key(argv[5], &frame_in, key, false);
+		if (ret)
+			return ret;
 	}
 
 	/* Execute RPMB op */
@@ -2484,22 +2498,217 @@ int do_rpmb_read_block(int nargs, char **argv)
 	close(dev_fd);
 	if (data_fd != STDOUT_FILENO)
 		close(data_fd);
-	if (key_fd != -1 && key_fd != STDIN_FILENO)
-		close(key_fd);
 
 	return ret;
 }
 
+static bool secure_wp_supported(char *device)
+{
+	__u8 ext_csd[512];
+	int fd;
+
+	fd = open(device, O_RDWR);
+	if (fd < 0) {
+		perror("open");
+		return false;
+	}
+
+	if (read_extcsd(fd, ext_csd)) {
+		fprintf(stderr, "Could not read EXT_CSD from %s\n", device);
+		close(fd);
+		return false;
+	}
+
+	close(fd);
+
+	if (ext_csd[EXT_CSD_REV] < EXT_CSD_REV_V5_0) {
+		fprintf(stderr, "SECURE_WP_SUPPORT option is only available on devices >= MMC 5.0 %s\n", device);
+		return false;
+	}
+
+	return !!(ext_csd[EXT_CSD_SECURE_WP_INFO] & 1);
+}
+
+static int rpmb_auth_write(int nargs, char **argv, uint16_t addr,
+			   uint8_t config_data, char *usage)
+{
+	int ret, dev_fd;
+	unsigned int cnt;
+	struct rpmb_frame frame_in = {
+		.req_resp    = htobe16(MMC_RPMB_CONF_WRITE),
+		.block_count = htobe16(1),
+		.addr	     = htobe16(addr),
+	}, frame_out = {};
+
+	if (nargs != 4) {
+		fprintf(stderr, "%s", usage);
+		return EXIT_FAILURE;
+	}
+
+	if (!secure_wp_supported(argv[1])) {
+		fprintf(stderr, "secure wp not supported %s", argv[1]);
+		return EXIT_FAILURE;
+	}
+
+	dev_fd = open(argv[2], O_RDWR);
+	if (dev_fd < 0) {
+		perror("device open");
+		return EXIT_FAILURE;
+	}
+
+	ret = rpmb_read_counter(dev_fd, &cnt);
+	/* Check RPMB response */
+	if (ret != 0) {
+		printf("RPMB read counter operation failed, retcode 0x%04x\n", ret);
+		goto out;
+	}
+	frame_in.write_counter = htobe32(cnt);
+
+	frame_in.data[255] = config_data; /* Byte 28 */
+
+	ret = rpmb_get_key(argv[3], &frame_in, NULL, true);
+	if (ret) {
+		printf("failed to read and apply key %d\n", ret);
+		goto out;
+	}
+
+	/* Execute RPMB op */
+	ret = do_rpmb_op(dev_fd, &frame_in, &frame_out, 1);
+	if (ret != 0) {
+		perror("RPMB ioctl failed");
+		goto out;
+	}
+
+	/* Check RPMB response */
+	if (frame_out.result != 0) {
+		printf("RPMB operation failed, retcode 0x%04x\n",
+		       be16toh(frame_out.result));
+	}
+
+out:
+	close(dev_fd);
+	return ret;
+}
+
+static int rpmb_auth_read(int nargs, char **argv, char *usage)
+{
+	int ret, dev_fd;
+	struct rpmb_frame frame_in = {
+		.req_resp    = htobe16(MMC_RPMB_CONF_READ),
+	}, frame_out = {};
+	unsigned char key[32] = {};
+
+	if (nargs != 3 && nargs != 4) {
+		fprintf(stderr, "%s", usage);
+		return EXIT_FAILURE;
+	}
+
+	if (!secure_wp_supported(argv[1])) {
+		fprintf(stderr, "secure wp not supported %s", argv[1]);
+		return EXIT_FAILURE;
+	}
+
+	dev_fd = open(argv[2], O_RDWR);
+	if (dev_fd < 0) {
+		perror("device open");
+		return EXIT_FAILURE;
+	}
+
+	if (nargs == 4) {
+		ret = rpmb_get_key(argv[3], &frame_in, key, false);
+		if (ret) {
+			printf("failed to read and apply key %d\n", ret);
+			goto out;
+		}
+	}
+
+	/* Execute RPMB op */
+	ret = do_rpmb_op(dev_fd, &frame_in, &frame_out, 1);
+	if (ret != 0) {
+		perror("RPMB ioctl failed");
+		goto out;
+	}
+
+	/* Check RPMB response */
+	if (frame_out.result != 0) {
+		printf("RPMB operation failed, retcode 0x%04x\n", be16toh(frame_out.result));
+		goto out;
+	}
+
+	close(dev_fd);
+
+	/* verify data against key */
+	if (nargs == 4) {
+		unsigned char mac[32] = {};
+		hmac_sha256_ctx ctx;
+
+		hmac_sha256_init(&ctx, key, sizeof(key));
+		hmac_sha256_update(&ctx, frame_out.data,
+				   sizeof(frame_out) - offsetof(struct rpmb_frame, data));
+
+		hmac_sha256_final(&ctx, mac, sizeof(mac));
+
+		/* Compare calculated MAC and MAC from last frame */
+		if (memcmp(mac, frame_out.key_mac, sizeof(mac))) {
+			printf("RPMB MAC mismatch\n");
+			return EXIT_FAILURE;
+		}
+	}
+
+	printf("SECURE_WP_MODE_ENABLE: 0x%02x]\n", frame_out.data[255]);
+	printf("SECURE_WP_MODE_CONFIG: 0x%02x]\n", frame_out.data[254]);
+
+	return 0;
+
+out:
+	close(dev_fd);
+	return ret;
+}
+
+int do_rpmb_sec_wp_enable(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-mode-on </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
+
+	return rpmb_auth_write(nargs, argv, 1, 1, usage);
+}
+
+int do_rpmb_sec_wp_disable(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-mode-off </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
+
+	return rpmb_auth_write(nargs, argv, 1, 0, usage);
+}
+
+int do_rpmb_sec_wp_mode_set(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-disable </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
+
+	return rpmb_auth_write(nargs, argv, 2, 1, usage);
+}
+
+int do_rpmb_sec_wp_mode_clear(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-enable </path/to/mmcblkx> </path/to/mmcblkXrpmb> </path/to/key>\n";
+
+	return rpmb_auth_write(nargs, argv, 2, 0, usage);
+}
+
+int do_rpmb_sec_wp_en_read(int nargs, char **argv)
+{
+	char *usage = "Usage: mmc rpmb secure-wp-enable-read <path/to/mmcblk0> </path/to/mmcblkXrpmb> [/path/to/key]\n";
+
+	return rpmb_auth_read(nargs, argv, usage);
+}
+
 int do_rpmb_write_block(int nargs, char **argv)
 {
-	int ret, dev_fd, key_fd, data_fd;
-	unsigned char key[32];
+	int ret, dev_fd, data_fd;
 	uint16_t addr;
 	unsigned int cnt;
 	struct rpmb_frame frame_in = {
 		.req_resp    = htobe16(MMC_RPMB_WRITE),
 		.block_count = htobe16(1)
-	}, frame_out;
+	}, frame_out = {};
 
 	if (nargs != 5) {
 		fprintf(stderr, "Usage: mmc rpmb write-block </path/to/mmcblkXrpmb> <address> </path/to/input_file> </path/to/key>\n");
@@ -2551,33 +2760,9 @@ int do_rpmb_write_block(int nargs, char **argv)
 		exit(1);
 	}
 
-	/* Read the auth key */
-	if (0 == strcmp(argv[4], "-"))
-		key_fd = STDIN_FILENO;
-	else {
-		key_fd = open(argv[4], O_RDONLY);
-		if (key_fd < 0) {
-			perror("can't open key file");
-			exit(1);
-		}
-	}
-
-	ret = DO_IO(read, key_fd, key, sizeof(key));
-	if (ret < 0) {
-		perror("read the key");
-		exit(1);
-	} else if (ret != sizeof(key)) {
-		printf("Auth key must be %lu bytes length, but we read only %d, exit\n",
-			   (unsigned long)sizeof(key),
-			   ret);
-		exit(1);
-	}
-
-	/* Calculate HMAC SHA256 */
-	hmac_sha256(
-		key, sizeof(key),
-		frame_in.data, sizeof(frame_in) - offsetof(struct rpmb_frame, data),
-		frame_in.key_mac, sizeof(frame_in.key_mac));
+	ret = rpmb_get_key(argv[4], &frame_in, NULL, true);
+	if (ret)
+		return ret;
 
 	/* Execute RPMB op */
 	ret = do_rpmb_op(dev_fd, &frame_in, &frame_out, 1);
@@ -2596,8 +2781,6 @@ int do_rpmb_write_block(int nargs, char **argv)
 	close(dev_fd);
 	if (data_fd != STDIN_FILENO)
 		close(data_fd);
-	if (key_fd != STDIN_FILENO)
-		close(key_fd);
 
 	return ret;
 }
@@ -2682,8 +2865,8 @@ static int erase(int dev_fd, __u32 argin, __u32 start, __u32 end)
 	  fprintf(stderr, "High Capacity Erase Unit Size=%d bytes\n" \
                           "High Capacity Erase Timeout=%d ms\n" \
                           "High Capacity Write Protect Group Size=%d bytes\n",
-		           ext_csd[224]*0x80000,
-		           ext_csd[223]*300,
+			   ext_csd[224]*0x80000,
+			   ext_csd[223]*300,
                            ext_csd[221]*ext_csd[224]*0x80000);
 	}
 

@@ -157,7 +157,7 @@ static struct Command commands[] = {
 		"Send Sanitize command to the <device>.\nThis will delete the unmapped memory region of the device.",
 	  NULL
 	},
-	{ do_rpmb_write_key, -1,
+	{ do_rpmb_write_key, 2,
 	  "rpmb write-key", "<rpmb device> <key file>\n"
 		  "Program authentication key which is 32 bytes length and stored\n"
 		  "in the specified file. Also you can specify '-' instead of\n"
@@ -168,12 +168,12 @@ static struct Command commands[] = {
 		  "    mmc rpmb write-key /dev/mmcblk0rpmb -",
 	  NULL
 	},
-	{ do_rpmb_read_counter, -1,
+	{ do_rpmb_read_counter, 1,
 	  "rpmb read-counter", "<rpmb device>\n"
 		  "Counter value for the <rpmb device> will be read to stdout.",
 	  NULL
 	},
-	{ do_rpmb_read_block, -1,
+	{ do_rpmb_read_block, -4,
 	  "rpmb read-block", "<rpmb device> <address> <blocks count> <output file> [key file]\n"
 		  "Blocks of 256 bytes will be read from <rpmb device> to output\n"
 		  "file or stdout if '-' is specified. If key is specified - read\n"
@@ -186,7 +186,7 @@ static struct Command commands[] = {
 		  "  $ mmc rpmb read-block /dev/mmcblk0rpmb 0x02 2 /tmp/block",
 	  NULL
 	},
-	{ do_rpmb_write_block, -1,
+	{ do_rpmb_write_block, 4,
 	  "rpmb write-block", "<rpmb device> <address> <256 byte data file> <key file>\n"
 		  "Block of 256 bytes will be written from data file to\n"
 		  "<rpmb device>. Also you can specify '-' instead of key\n"
@@ -195,6 +195,60 @@ static struct Command commands[] = {
 		  "  $ (awk 'BEGIN {while (c++<256) printf \"a\"}' | \\\n"
 		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH) | \\\n"
 		  "    mmc rpmb write-block /dev/mmcblk0rpmb 0x02 - -",
+	  NULL
+	},
+	{ do_rpmb_sec_wp_enable, 3,
+	  "rpmb secure-wp-mode-on", "<dev> <rpmb device> <key file>\n"
+		  "Enable Secure Write Protection mode.\n"
+		  "The access to the write protection related EXT_CSD and\n"
+		  "CSD fields depends on the value of SECURE_WP_MASK bit in\n"
+		  "SECURE_WP_MODE_CONFIG field\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-mode-on /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
+	  NULL
+	},
+	{ do_rpmb_sec_wp_disable, 3,
+	  "rpmb secure-wp-mode-off", "<dev> <rpmb device> <key file>\n"
+		  "Legacy Write Protection mode.\n"
+		  "TMP_WRITE_PROTECT[12] and PERM_WRITE_PROTECT[13] is updated by CMD27.\n"
+		  "USER_WP[171], BOOT_WP[173] and BOOT_WP_STATUS[174] are updated by CMD6\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-mode-off /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
+	  NULL
+	},
+	{ do_rpmb_sec_wp_mode_set, 3,
+	  "rpmb secure-wp-disable", "<dev> <rpmb device> <key file>\n"
+		  "Enabling updating WP related EXT_CSD and CSD fields.\n"
+		  "Applicable only if secure wp mode is enabled.\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-disable /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
+	  NULL
+	},
+	{ do_rpmb_sec_wp_mode_clear, 3,
+	  "rpmb secure-wp-enable", "<dev> <rpmb device> <key file>\n"
+		  "Disabling updating WP related EXT_CSD and CSD fields.\n"
+		  "Applicable only if secure wp mode is enabled.\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-enable /dev/block/mmcblk0 /dev/mmcblk0rpmb -",
+	  NULL
+	},
+	{ do_rpmb_sec_wp_en_read, -2,
+	  "rpmb secure-wp-en-read", "<device> <rpmb device> [key file]\n"
+		  "Reads the status of the SECURE_WP_EN & SECURE_WP_MASK fields.\n"
+		  "You can specify '-' instead of key\n"
+		  "Example:\n"
+		  "    echo -n AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH | \\\n"
+		  "    mmc rpmb secure-wp-en-read /dev/mmcblk0 /dev/mmcblk0rpmb -\n"
+		  "or read without verification\n"
+		  "  $ mmc rpmb secure-wp-en-read /dev/mmcblk0 /dev/mmcblk0rpmb",
 	  NULL
 	},
 	{ do_cache_en, -1,
