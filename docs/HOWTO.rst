@@ -94,16 +94,20 @@ Running mmc-utils
     ``mmc rpmb read-block <rpmb device> <address> <blocks count> <output file> [key file]``
         Reads blocks of data from the RPMB partition.
 
-    ``mmc rpmb secure-wp-mode-on <rpmb device> <key file>``
+    ``mmc rpmb secure-wp-mode-on <device> <rpmb device> <key file>``
         Enable Secure Write Protection mode.
 
-    ``mmc rpmb secure-wp-mode-off <rpmb device> <key file>``
+    ``mmc rpmb secure-wp-mode-off <device> <rpmb device> <key file>``
         Disable Secure Write Protection mode = legacy mode.
 
-    ``mmc rpmb secure-wp-disable <rpmb device> <key file>``
+    ``mmc rpmb secure-wp-disable <device> <rpmb device> <key file>``
         Enable updating WP related EXT_CSD and CSD fields.
         Applicable only if secure write protect mode is enabled.
 
-    ``mmc rpmb secure-wp-enable <rpmb device> <key file>``
+    ``mmc rpmb secure-wp-enable <device> <rpmb device> <key file>``
         Disable updating WP related EXT_CSD and CSD fields.
         Applicable only if secure write protect mode is enabled.
+
+    ``mmc rpmb secure-wp-en-read <device> <rpmb device> [key file]``
+        Reads the status of the SECURE_WP_EN & SECURE_WP_MASK fields.
+        If you are using a key (not mandatory) You can specify '-' for stdin.
